@@ -58,6 +58,13 @@ class RepositoryAcceptanceTests(unittest.TestCase):
         self.assertIn('ai_ready = sum(bool(state.get("provider_ready")) for state in states)', source)
         self.assertIn('"ok": online == len(SERVICES) and ai_ready == len(SERVICES)', source)
 
+    def test_task_id_validation_rejects_path_traversal(self):
+        source = (RUNTIME / "coordinator.py").read_text(encoding="utf-8")
+        self.assertIn("def valid_task_id(value):", source)
+        self.assertIn('"invalid_task_id"', source)
+        self.assertIn('"task_is_running"', source)
+        self.assertIn('if "/" in task_id or not valid_task_id(task_id):', source)
+
     def test_deployment_compose_declares_services(self):
         compose = RUNTIME / "docker-compose.yml"
         self.assertTrue(compose.exists())
