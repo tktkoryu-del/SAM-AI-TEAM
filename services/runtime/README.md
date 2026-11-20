@@ -27,7 +27,7 @@ Defaults can be changed with `SAM_MAX_PARALLEL`, `SAM_WORKER_TIMEOUT`, and `SAM_
 
 Media evidence must point to a real file inside `SAM_MEDIA_DIR` (defaults to `services/runtime/deliverables`). The coordinator verifies existence, non-zero size, SHA-256, and file type. Video/audio metadata is checked with `ffprobe`; image files are checked against their file signatures. The independent acceptance module requires evidence for explicitly requested rendered media, checks video orientation/duration when specified, and rejects model-invented filenames.
 
-The coordinator binds to localhost by default. If it is bound to a non-local interface, `SAM_API_TOKEN` is required. Workers are localhost-bound by default; set `SAM_WORKER_TOKEN` to authenticate coordinator-to-worker calls. Do not expose the API directly to the public internet.
+The coordinator binds to localhost by default. If it is bound to a non-local interface, `SAM_API_TOKEN` is required. Workers are localhost-bound by default; set `SAM_WORKER_TOKEN` to authenticate coordinator-to-worker calls. Worker `/health` performs a read-only provider readiness check: Ollama must list the configured model, and OpenAI must expose the configured model through `GET /v1/models`. The coordinator reports workers reachable separately from `ai_ready`, and its overall `ok` is true only when all 12 workers are reachable and all 12 can access the configured model. These checks do not generate tokens or incur inference charges. Do not expose the API directly to the public internet.
 
 ## Worker/model quality
 
