@@ -56,7 +56,9 @@ def execute_task(tid):
     if not item: return
     item["status"]="running"; item["started_at"]=now(); save_task(item)
     results=[]
-    futures={POOL.submit(run_one,SERVICE_MAP[k],item["task"],item.get("context","")):k for k in item["services"]}
+    quality_requested="quality" in item["services"]
+    parallel_keys=[k for k in item["services"] if k!="quality"] if quality_requested else item["services"]
+    futures={POOL.submit(run_one,SERVICE_MAP[k],item["task"],item.get("context","")):k for k in parallel_keys}
     for future in as_completed(futures):
         key=futures[future]
         try: results.append(future.result())
@@ -67,9 +69,34 @@ def execute_task(tid):
             item["finished_workers"]=len(results)
             item["updated_at"]=now()
             save_task(item)
+    if quality_requested:
+        compact=[]
+        for result in results:
+            compact.append({
+                "service":result.get("service"),
+                "ok":bool(result.get("ok") and result.get("output")),
+                "error":result.get("error"),
+                "output":str(result.get("output",""))[:1800]
+            })
+        qa_task=item["task"]+"\n\nFINAL INDEPENDENT QA: Audit the actual outputs from all other roles included in context. Identify missing, generic, fabricated, or unusable deliverables. Do not give a generic checklist. End with exactly one machine-readable final line: VERDICT: PASS or VERDICT: FAIL. PASS is allowed only if every requested role produced a concrete, task-relevant deliverable and no unsupported external-execution claim is present."
+        qa_context=item.get("context","")+"\n\nOTHER_ROLE_RESULTS_JSON:\n"+json.dumps(compact,ensure_ascii=False)
+        try: qa_result=run_one(SERVICE_MAP["quality"],qa_task,qa_context)
+        except Exception as e: qa_result={"ok":False,"service":"quality","error":str(e)}
+        results.append(qa_result)
+        with LOCK:
+            item["results"]=results[:]
+            item["successful"]=sum(1 for x in results if x.get("ok") and x.get("output"))
+            item["finished_workers"]=len(results)
+            item["updated_at"]=now()
+            save_task(item)
     good=sum(1 for x in results if x.get("ok") and x.get("output"))
     item["successful"]=good
     item["requested"]=len(item["services"])
+    qa=next((x for x in results if x.get("service")=="quality"),None) if quality_requested else None
+    qa_output=str((qa or {}).get("output",""))
+    qa_passed=any(line.strip()=="VERDICT: PASS" for line in qa_output.splitlines())
+    item["quality_gate"]={"requested":quality_requested,"reviewed":bool(qa and qa.get("ok") and qa_output),"passed":qa_passed,"reviewer":"quality"}
+    item["acceptance_pass"]=good==len(item["services"]) and (not quality_requested or qa_passed)
     item["status"]="completed" if good==len(item["services"]) else ("partial" if good else "blocked")
     item["completed_at"]=now()
     item["evidence"]=[]
