@@ -32,3 +32,6 @@ The Compose file expects Ollama on the Docker host and requires `SAM_API_TOKEN`.
 - Render free web services sleep after 15 minutes idle, and free background workers/persistent disks are not included; this is not a suitable always-on 12-worker deployment without a paid architecture.
 
 Never claim runtime acceptance from source tests alone. Require a live 12/12 health check, a completed test task, output-quality review, and restart/reboot evidence.
+
+## Hosted staging blueprint
+A guarded Render free-tier staging blueprint is available at the repository root (`render.yaml`). It does not auto-deploy. It requires a user-supplied OpenAI API key (billable usage) and is not an always-on or durable production deployment.
