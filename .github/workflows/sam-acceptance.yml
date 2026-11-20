@@ -1,0 +1,40 @@
+name: SAM AI TEAM acceptance
+on:
+  pull_request:
+    paths:
+      - "services/runtime/**"
+      - "tests/**"
+      - "scripts/**"
+      - ".github/workflows/sam-acceptance.yml"
+  push:
+    branches: [main]
+    paths:
+      - "services/runtime/**"
+      - "tests/**"
+      - "scripts/**"
+      - ".github/workflows/sam-acceptance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile runtime Python files
+        run: |
+          python -m compileall -q services/runtime scripts tests
+      - name: Run source acceptance tests
+        run: |
+          python -m unittest discover -s tests -v
+      - name: Credential pattern scan
+        run: |
+          if grep -RInE 'sk-proj-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' services/runtime tests scripts; then
+            echo "Potential committed credential found"
+            exit 1
+          fi
