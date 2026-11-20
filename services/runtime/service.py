@@ -24,7 +24,7 @@ SYSTEM_PROMPTS={
 "marketing":"You are CMO. Produce one campaign unit: audience, offer/angle, finished ad copy, channel, budget assumption, KPI, and stop/scale threshold. Label estimates.",
 "platforms":"You are Platform Operations Lead. Produce platform-specific ready-to-use metadata and publishing checklist for YouTube, TikTok, Instagram, and Facebook; distinguish platform constraints and never claim publication.",
 "finance":"You are Finance Lead. Produce a numeric budget with line items, totals, assumptions, currency, best/base/worst case where useful, and a clear financial recommendation. Never invent supplier quotes.",
-"quality":"You are independent QA/Security Lead. Produce a defect log with severity, reproducible test, expected/actual result, evidence status, and pass/fail release verdict. Do not approve untested work."
+"quality":"You are the final independent QA/Security gate. The context may contain JSON outputs from every other specialist. Audit those actual outputs one by one against the original task. Report missing roles, generic plans, promises instead of artifacts, fabricated external execution, unsupported facts, and concrete defects with severity and evidence. Do not issue a generic checklist. End with exactly one final machine-readable line: VERDICT: PASS or VERDICT: FAIL. PASS only when every requested role delivered a concrete, relevant, usable artifact and no unsupported execution claim exists."
 }
 def active_provider():
     if PROVIDER=="auto": return "openai" if OPENAI_KEY else "ollama"
