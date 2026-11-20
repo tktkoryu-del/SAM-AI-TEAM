@@ -1,0 +1,49 @@
+name: Task
+description: Register a scoped task with acceptance criteria
+title: "[TASK] "
+labels: ["task"]
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What measurable result should be delivered?
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and exclusions
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+  - type: dropdown
+    id: specialty
+    attributes:
+      label: Lead specialty
+      options:
+        - CEO
+        - COO
+        - Research and Intelligence
+        - Strategy and Growth
+        - CTO / Engineering
+        - Design
+        - Video Production
+        - Content
+        - Marketing
+        - Platform Operations
+        - Finance
+        - QA and Security
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Verification evidence
+      description: Link tests, screenshots, files, or logs.
