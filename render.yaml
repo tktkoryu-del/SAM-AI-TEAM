@@ -9,7 +9,6 @@ services:
     dockerContext: services/runtime
     dockerCommand: bash ./cloud-entrypoint.sh
     healthCheckPath: /health
-    maxShutdownDelaySeconds: 120
     autoDeployTrigger: off
     envVars:
       - key: SAM_BIND_HOST
