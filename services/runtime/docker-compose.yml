@@ -25,11 +25,6 @@ services:
       SAM_OLLAMA_MODEL: "${SAM_OLLAMA_MODEL:-qwen2.5:3b}"
     extra_hosts: ["host.docker.internal:host-gateway"]
     restart: unless-stopped
-    healthcheck: &worker_health
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8790/health',timeout=3)"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
   coo: {<<: *worker, command: ["python", "service.py", "coo"]}
   research: {<<: *worker, command: ["python", "service.py", "research"]}
   strategy: {<<: *worker, command: ["python", "service.py", "strategy"]}
