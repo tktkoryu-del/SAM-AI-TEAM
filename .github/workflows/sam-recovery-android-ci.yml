@@ -23,7 +23,7 @@ jobs:
           gradle-version: "8.13"
       - name: Build debug APK
         working-directory: projects/sam-recovery/android
-        run: gradle --no-daemon assembleDebug
+        run: gradle --no-daemon testDebugUnitTest assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: sam-recovery-debug
