@@ -50,6 +50,43 @@ def active_provider():
     return PROVIDER
 
 
+def provider_health():
+    """Read-only readiness check; never performs a billable model generation."""
+    provider = active_provider()
+    try:
+        if provider == "ollama":
+            request = urllib.request.Request(OLLAMA_URL + "/api/tags", method="GET")
+            with urllib.request.urlopen(request, timeout=4) as response:
+                payload = json.loads(response.read() or b"{}")
+            models = payload.get("models", [])
+            available = any(
+                item.get("name") == OLLAMA_MODEL or item.get("model") == OLLAMA_MODEL
+                for item in models
+            )
+            return {
+                "provider_ready": bool(available),
+                "provider_error": None if available else "configured Ollama model is not installed",
+            }
+        if provider == "openai":
+            if not OPENAI_KEY:
+                return {"provider_ready": False, "provider_error": "OPENAI_API_KEY is missing"}
+            request = urllib.request.Request(
+                "https://api.openai.com/v1/models",
+                headers={"Authorization": "Bearer " + OPENAI_KEY},
+                method="GET",
+            )
+            with urllib.request.urlopen(request, timeout=6) as response:
+                payload = json.loads(response.read() or b"{}")
+            available = any(item.get("id") == OPENAI_MODEL for item in payload.get("data", []))
+            return {
+                "provider_ready": bool(available),
+                "provider_error": None if available else "configured OpenAI model is not available to this key",
+            }
+        return {"provider_ready": False, "provider_error": "unsupported provider: " + provider}
+    except Exception as error:
+        return {"provider_ready": False, "provider_error": str(error)[:500]}
+
+
 def ask_model(task, context):
     provider = active_provider()
     system_text = (
@@ -179,16 +216,21 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/health":
             return self.send_json(404, {"error": "not_found"})
         provider = active_provider()
+        readiness = provider_health()
+        ready = bool(readiness.get("provider_ready"))
         self.send_json(
             200,
             {
-                "ok": True,
+                "ok": ready,
+                "reachable": True,
                 "service": KEY,
                 "role": ROLE,
-                "status": "online",
+                "status": "ready" if ready else "degraded",
                 "provider": provider,
                 "model": OLLAMA_MODEL if provider == "ollama" else OPENAI_MODEL,
                 "provider_configured": bool(provider == "ollama" or OPENAI_KEY),
+                "provider_ready": ready,
+                "provider_error": readiness.get("provider_error"),
                 "token_auth_enabled": bool(WORKER_TOKEN),
             },
         )
