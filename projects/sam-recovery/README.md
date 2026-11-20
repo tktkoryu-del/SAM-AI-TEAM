@@ -14,7 +14,7 @@
 - لا يضمن العثور على عناصر غير متاحة من خلال واجهات النظام.
 
 ## بناء Android محلياً
-المتطلبات: JDK 17، Android SDK Platform 36، Gradle 8.13.
+المتطلبات: JDK 17، Android SDK Platform 36، Gradle 8.13. يستهدف المشروع API 36 (Android 16) لمتطلبات إرسال التطبيقات الجديدة إلى Google Play اعتباراً من 31 أغسطس 2026.
 ```bash
 cd projects/sam-recovery/android
 gradle assembleDebug
