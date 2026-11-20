@@ -9,7 +9,7 @@ os.makedirs(TASK_DIR,exist_ok=True)
 with open(os.path.join(ROOT,"services.json"),encoding="utf-8") as f: SERVICES=json.load(f)
 SERVICE_MAP={s["key"]:s for s in SERVICES}
 BIND=os.getenv("SAM_BIND_HOST","127.0.0.1")
-PORT=int(os.getenv("SAM_COORDINATOR_PORT","8787"))
+PORT=int(os.getenv("PORT",os.getenv("SAM_COORDINATOR_PORT","8787")))
 TOKEN=os.getenv("SAM_API_TOKEN","").strip()
 DOCKER=os.getenv("SAM_DOCKER_NETWORK","0")=="1"
 MAX_PARALLEL=max(1,min(int(os.getenv("SAM_MAX_PARALLEL","3")),6))
