@@ -98,14 +98,22 @@ class MainActivity : Activity() {
         }
         items.forEach { item ->
             val date = if (item.date > 0) DateFormat.getDateTimeInstance().format(Date(item.date * 1000)) else ""
-            results.addView(TextView(this).apply {
-                text = "${item.type}: ${item.name}\n$date\nاضغط للمعاينة"
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(12, 10, 12, 10)
+                setBackgroundColor(0xFFFFFFFF.toInt())
+            }
+            row.addView(TextView(this).apply {
+                text = "${item.type}: ${item.name}\n$date"
                 textSize = 15f
                 gravity = Gravity.RIGHT
-                setPadding(14, 16, 14, 16)
-                setBackgroundColor(0xFFFFFFFF.toInt())
                 setOnClickListener { openItem(item) }
-            }, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, 8) })
+            })
+            row.addView(Button(this).apply {
+                text = "حفظ نسخة في مجلد أختاره"
+                setOnClickListener { chooseExportDestination(item) }
+            })
+            results.addView(row, LinearLayout.LayoutParams(-1, -2).apply { setMargins(0, 0, 0, 8) })
         }
     }
 
@@ -119,6 +127,42 @@ class MainActivity : Activity() {
                 while (c.moveToNext()) output.add(Item(ContentUris.withAppendedId(collection, c.getLong(id)), c.getString(name) ?: "ملف بدون اسم", type, c.getLong(date)))
             }
         } catch (_: SecurityException) { /* Partial media access is supported. */ }
+    }
+
+    private var pendingExportUri: Uri? = null
+    private var pendingExportName: String = "SAM-Recovery-media"
+
+    private fun chooseExportDestination(item: Item) {
+        pendingExportUri = item.uri
+        pendingExportName = item.name
+        val mime = contentResolver.getType(item.uri) ?: if (item.type == "صورة") "image/jpeg" else "video/mp4"
+        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = mime
+            putExtra(Intent.EXTRA_TITLE, item.name)
+        }, 4103)
+    }
+
+    @Deprecated("Uses the platform document picker result callback")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != 4103 || resultCode != RESULT_OK) return
+        val destination = data?.data ?: return
+        val source = pendingExportUri ?: return
+        try {
+            contentResolver.openInputStream(source).use { input ->
+                contentResolver.openOutputStream(destination, "w").use { output ->
+                    requireNotNull(input) { "تعذر قراءة الملف الأصلي" }
+                    requireNotNull(output) { "تعذر إنشاء النسخة" }
+                    input.copyTo(output)
+                }
+            }
+            Toast.makeText(this, "تم حفظ نسخة من الملف في المكان الذي اخترته.", Toast.LENGTH_LONG).show()
+        } catch (_: Exception) {
+            Toast.makeText(this, "تعذر حفظ النسخة. تحقق من المساحة والأذونات.", Toast.LENGTH_LONG).show()
+        } finally {
+            pendingExportUri = null
+        }
     }
 
     private fun openItem(item: Item) {
