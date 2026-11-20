@@ -1,0 +1,24 @@
+services:
+  coordinator:
+    build: .
+    command: ["python", "coordinator.py"]
+    ports: ["8787:8787"]
+    environment: [SAM_HOST=0.0.0.0]
+    depends_on: [ceo, coo, research, strategy, cto, design, video, content, marketing, platforms, finance, quality]
+    restart: unless-stopped
+  ceo: &worker
+    build: .
+    command: ["python", "service.py", "ceo"]
+    expose: ["8790"]
+    restart: unless-stopped
+  coo: {<<: *worker, command: ["python", "service.py", "coo"]}
+  research: {<<: *worker, command: ["python", "service.py", "research"]}
+  strategy: {<<: *worker, command: ["python", "service.py", "strategy"]}
+  cto: {<<: *worker, command: ["python", "service.py", "cto"]}
+  design: {<<: *worker, command: ["python", "service.py", "design"]}
+  video: {<<: *worker, command: ["python", "service.py", "video"]}
+  content: {<<: *worker, command: ["python", "service.py", "content"]}
+  marketing: {<<: *worker, command: ["python", "service.py", "marketing"]}
+  platforms: {<<: *worker, command: ["python", "service.py", "platforms"]}
+  finance: {<<: *worker, command: ["python", "service.py", "finance"]}
+  quality: {<<: *worker, command: ["python", "service.py", "quality"]}
