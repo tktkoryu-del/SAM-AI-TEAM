@@ -45,6 +45,19 @@ class RepositoryAcceptanceTests(unittest.TestCase):
         self.assertTrue((RUNTIME / "service.py").exists())
         self.assertTrue((RUNTIME / "acceptance.py").exists())
 
+    def test_worker_health_checks_real_model_readiness(self):
+        source = (RUNTIME / "service.py").read_text(encoding="utf-8")
+        self.assertIn("def provider_health():", source)
+        self.assertIn("/api/tags", source)
+        self.assertIn("/v1/models", source)
+        self.assertIn('"provider_ready": ready', source)
+        self.assertIn('"reachable": True', source)
+
+    def test_coordinator_health_requires_all_models_ready(self):
+        source = (RUNTIME / "coordinator.py").read_text(encoding="utf-8")
+        self.assertIn('ai_ready = sum(bool(state.get("provider_ready")) for state in states)', source)
+        self.assertIn('"ok": online == len(SERVICES) and ai_ready == len(SERVICES)', source)
+
     def test_deployment_compose_declares_services(self):
         compose = RUNTIME / "docker-compose.yml"
         self.assertTrue(compose.exists())
