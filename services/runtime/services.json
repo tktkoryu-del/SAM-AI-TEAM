@@ -1,0 +1,74 @@
+[
+  {
+    "key": "ceo",
+    "name": "CEO - Executive leadership",
+    "port": 8790,
+    "host": "ceo"
+  },
+  {
+    "key": "coo",
+    "name": "COO - Operations",
+    "port": 8791,
+    "host": "coo"
+  },
+  {
+    "key": "research",
+    "name": "Research and intelligence",
+    "port": 8792,
+    "host": "research"
+  },
+  {
+    "key": "strategy",
+    "name": "Strategy and growth",
+    "port": 8793,
+    "host": "strategy"
+  },
+  {
+    "key": "cto",
+    "name": "CTO - Engineering",
+    "port": 8794,
+    "host": "cto"
+  },
+  {
+    "key": "design",
+    "name": "Design and identity",
+    "port": 8795,
+    "host": "design"
+  },
+  {
+    "key": "video",
+    "name": "Video production",
+    "port": 8796,
+    "host": "video"
+  },
+  {
+    "key": "content",
+    "name": "Content creation",
+    "port": 8797,
+    "host": "content"
+  },
+  {
+    "key": "marketing",
+    "name": "Marketing CMO",
+    "port": 8798,
+    "host": "marketing"
+  },
+  {
+    "key": "platforms",
+    "name": "Platform management",
+    "port": 8799,
+    "host": "platforms"
+  },
+  {
+    "key": "finance",
+    "name": "Finance",
+    "port": 8800,
+    "host": "finance"
+  },
+  {
+    "key": "quality",
+    "name": "Quality and security",
+    "port": 8801,
+    "host": "quality"
+  }
+]
