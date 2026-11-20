@@ -64,7 +64,7 @@ def validate_role_outputs(results, requested_roles, task_text, evidence):
         if len(output.strip()) < 80 or "DELIVERABLE" not in output.upper():
             malformed_roles.append(role)
         for match in re.findall(
-            r"(?i)\b[A-Za-z0-9_ -]+\.(?:mp4|mov|mkv|webm|png|jpe?g|webp|wav|mp3|m4a|aac)\b",
+            r"(?i)\b([A-Za-z0-9_-]+\.(?:mp4|mov|mkv|webm|png|jpe?g|webp|wav|mp3|m4a|aac))\b",
             output,
         ):
             filename = os.path.basename(match.strip()).lower()
