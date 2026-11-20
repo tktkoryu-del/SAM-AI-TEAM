@@ -522,17 +522,18 @@ class Handler(BaseHTTPRequestHandler):
                         "SELECT status,COUNT(*) AS count FROM tasks GROUP BY status"
                     )
                 }
-            online = sum(bool(state.get("ok")) for state in states)
+            online = sum(
+                bool(state.get("reachable", state.get("ok"))) for state in states
+            )
+            ai_ready = sum(bool(state.get("provider_ready")) for state in states)
             return self.send_json(
                 200,
                 {
-                    "ok": online == len(SERVICES),
+                    "ok": online == len(SERVICES) and ai_ready == len(SERVICES),
                     "coordinator": "online",
                     "online": online,
                     "total": len(SERVICES),
-                    "ai_ready": sum(
-                        bool(state.get("provider_configured")) for state in states
-                    ),
+                    "ai_ready": ai_ready,
                     "max_parallel": MAX_PARALLEL,
                     "worker_retries": WORKER_RETRIES,
                     "worker_timeout_seconds": WORKER_TIMEOUT,
