@@ -58,5 +58,14 @@ class RepositoryAcceptanceTests(unittest.TestCase):
         self.assertTrue((RUNTIME / "startup-launch.ps1").exists())
         self.assertTrue((RUNTIME / "install-startup.ps1").exists())
 
+    def test_cloud_container_entrypoint_and_blueprint_exist(self):
+        self.assertTrue((RUNTIME / "cloud-entrypoint.sh").exists())
+        dockerfile = (RUNTIME / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("cloud-entrypoint.sh", dockerfile)
+        blueprint = (ROOT / "render.yaml").read_text(encoding="utf-8")
+        for marker in ("runtime: docker", "plan: free", "autoDeployTrigger: off",
+                       "sync: false", "generateValue: true"):
+            self.assertIn(marker, blueprint)
+
 if __name__ == "__main__":
     unittest.main()
