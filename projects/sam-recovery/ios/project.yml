@@ -1,0 +1,17 @@
+name: SAMRecovery
+options:
+  bundleIdPrefix: com.samteam
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  SAMRecovery:
+    type: application
+    platform: iOS
+    sources:
+      - SAMRecovery
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.samteam.recovery
+        INFOPLIST_KEY_NSPhotoLibraryUsageDescription: "يستخدم SAM Recovery مكتبة الصور لعرض الوسائط التي تسمح بالوصول إليها على جهازك."
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1,2"
