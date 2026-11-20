@@ -30,6 +30,8 @@ jobs:
           python-version: "3.12"
       - name: Compile runtime Python files
         run: python -m compileall -q services/runtime scripts tests
+      - name: Validate container entrypoint shell syntax
+        run: bash -n services/runtime/cloud-entrypoint.sh
       - name: Validate deployment YAML
         run: |
           python -m pip install --disable-pip-version-check pyyaml
