@@ -74,5 +74,5 @@ class Handler(BaseHTTPRequestHandler):
       result=ask_model(task,data.get("context",""))
       return self.send_json(200 if result.get("ok") else 503,result)
     def log_message(self,*a):pass
-BIND=os.getenv("SAM_BIND_HOST","127.0.0.1")
+BIND=os.getenv("SAM_WORKER_BIND_HOST",os.getenv("SAM_BIND_HOST","127.0.0.1"))
 ThreadingHTTPServer((BIND,SPEC["port"]),Handler).serve_forever()
