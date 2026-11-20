@@ -1,8 +1,10 @@
+import hashlib
 import json
 import os
 import random
-import re
+import shutil
 import sqlite3
+import subprocess
 import threading
 import time
 import urllib.error
@@ -12,10 +14,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from acceptance import validate_role_outputs
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 TASK_DIR = os.path.join(ROOT, "tasks")
+MEDIA_ROOT = os.path.realpath(
+    os.getenv("SAM_MEDIA_DIR", os.path.join(ROOT, "deliverables"))
+)
 DB_PATH = os.getenv("SAM_TASK_DB", os.path.join(ROOT, "sam_tasks.sqlite3"))
 os.makedirs(TASK_DIR, exist_ok=True)
+os.makedirs(MEDIA_ROOT, exist_ok=True)
 with open(os.path.join(ROOT, "services.json"), encoding="utf-8") as stream:
     SERVICES = json.load(stream)
 SERVICE_MAP = {item["key"]: item for item in SERVICES}
@@ -213,76 +221,6 @@ def run_one(service, task, context):
     }
 
 
-def looks_like_unverified_media_claim(output):
-    extensions = r"\.(?:mp4|mov|webm|png|jpe?g|wav|mp3|m4a)\b"
-    if not re.search(extensions, output, flags=re.IGNORECASE):
-        return False
-    evidence_markers = (
-        "evidence_path",
-        "verified_file",
-        "artifact_sha256",
-        "file_exists=true",
-    )
-    return not any(marker in output.lower() for marker in evidence_markers)
-
-
-def deterministic_quality(results, requested_roles, task_text):
-    missing = []
-    unverified_media = []
-    thin_outputs = []
-    media_requested = bool(
-        re.search(r"\b(video|image|photo|audio|mp4|png|wav|صورة|فيديو|صوت)\b",
-                  task_text, flags=re.IGNORECASE)
-    )
-    for role in requested_roles:
-        if role == "quality":
-            continue
-        result = next(
-            (
-                entry
-                for entry in results
-                if entry.get("service") == role
-                and entry.get("ok")
-                and str(entry.get("output", "")).strip()
-            ),
-            None,
-        )
-        if result is None:
-            missing.append(role)
-            continue
-        output = str(result.get("output", ""))
-        if len(output.strip()) < 80 or "DELIVERABLE" not in output.upper():
-            thin_outputs.append(role)
-        if looks_like_unverified_media_claim(output):
-            unverified_media.append(role)
-        if media_requested and role == "video" and re.search(
-            r"\bNOT_PRODUCED\b", output, flags=re.IGNORECASE
-        ):
-            missing.append(role + " (media bytes not produced)")
-    if missing or unverified_media or thin_outputs:
-        detail = [
-            "DELIVERABLE:",
-            "القبول مرفوض وفق فحوص الأدلة الآلية.",
-            "الأدوار المفقودة أو غير المنتجة: " + (", ".join(sorted(set(missing))) or "لا يوجد"),
-            "ادعاءات ملفات وسائط دون دليل: " + (", ".join(sorted(set(unverified_media))) or "لا يوجد"),
-            "المخرجات القصيرة أو دون قسم DELIVERABLE: " + (", ".join(sorted(set(thin_outputs))) or "لا يوجد"),
-            "VALIDATION: تم فحص حالة الدور، طول المخرج، قسم التسليم، وادعاءات امتدادات الوسائط.",
-            "LIMITATIONS: الفحص آلي بنيوي ولا يغني عن مراجعة المحتوى أو اختبار ملفات الوسائط.",
-            "VERDICT: FAIL",
-        ]
-        return {
-            "ok": True,
-            "service": "quality",
-            "role": "Deterministic acceptance gate",
-            "provider": "local_rules",
-            "model": "sam-acceptance-v1",
-            "status": "rejected",
-            "output": "\n".join(detail),
-            "requested_role": "quality",
-        }
-    return None
-
-
 def get_completed_role_keys(results):
     completed = set()
     for result in results:
@@ -291,6 +229,90 @@ def get_completed_role_keys(results):
             if key:
                 completed.add(key)
     return completed
+
+
+def probe_media(path, media_type):
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        raise RuntimeError("ffprobe is required to verify video/audio metadata")
+    command = [
+        ffprobe, "-v", "error", "-show_entries",
+        "format=duration:stream=codec_type,codec_name,width,height",
+        "-of", "json", path,
+    ]
+    result = subprocess.run(
+        command, capture_output=True, text=True, timeout=20, check=True
+    )
+    metadata = json.loads(result.stdout or "{}")
+    streams = metadata.get("streams", [])
+    media_streams = [entry for entry in streams if entry.get("codec_type") == media_type]
+    if not media_streams:
+        raise RuntimeError("File does not contain a {} stream".format(media_type))
+    selected = media_streams[0]
+    probe = {
+        "stream_type": media_type,
+        "codec": selected.get("codec_name"),
+        "width": selected.get("width"),
+        "height": selected.get("height"),
+        "duration_seconds": None,
+    }
+    raw_duration = (metadata.get("format") or {}).get("duration")
+    if raw_duration is not None:
+        probe["duration_seconds"] = float(raw_duration)
+    return probe
+
+
+def verify_media_file(relative_path):
+    if not relative_path or not isinstance(relative_path, str):
+        raise ValueError("path is required")
+    candidate = relative_path if os.path.isabs(relative_path) else os.path.join(MEDIA_ROOT, relative_path)
+    real_path = os.path.realpath(candidate)
+    if os.path.commonpath([MEDIA_ROOT, real_path]) != MEDIA_ROOT:
+        raise ValueError("media path must be inside SAM_MEDIA_DIR")
+    if not os.path.isfile(real_path):
+        raise FileNotFoundError("media file does not exist")
+    size = os.path.getsize(real_path)
+    if size <= 0:
+        raise ValueError("media file is empty")
+    extension = os.path.splitext(real_path)[1].lower()
+    extension_types = {
+        ".mp4": ("video", "video"), ".mov": ("video", "video"),
+        ".mkv": ("video", "video"), ".webm": ("video", "video"),
+        ".png": ("image", None), ".jpg": ("image", None),
+        ".jpeg": ("image", None), ".webp": ("image", None),
+        ".wav": ("audio", "audio"), ".mp3": ("audio", "audio"),
+        ".m4a": ("audio", "audio"), ".aac": ("audio", "audio"),
+    }
+    if extension not in extension_types:
+        raise ValueError("unsupported media extension")
+    media_type, stream_type = extension_types[extension]
+    probe = {}
+    if stream_type:
+        probe = probe_media(real_path, stream_type)
+    else:
+        with open(real_path, "rb") as stream:
+            header = stream.read(16)
+        valid = (
+            (extension == ".png" and header.startswith(b"\x89PNG\r\n\x1a\n"))
+            or (extension in (".jpg", ".jpeg") and header.startswith(b"\xff\xd8"))
+            or (extension == ".webp" and header.startswith(b"RIFF") and header[8:12] == b"WEBP")
+        )
+        if not valid:
+            raise ValueError("image signature does not match extension")
+        probe = {"stream_type": "image"}
+    digest = hashlib.sha256()
+    with open(real_path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return {
+        "path": os.path.relpath(real_path, MEDIA_ROOT).replace("\\", "/"),
+        "type": media_type,
+        "size_bytes": size,
+        "sha256": digest.hexdigest(),
+        "verified": True,
+        "verified_at": now(),
+        "media_probe": probe,
+    }
 
 
 def execute_task(task_id):
@@ -344,11 +366,29 @@ def execute_task(task_id):
 
         if quality_requested:
             results = [entry for entry in results if entry.get("service") != "quality"]
-            deterministic = deterministic_quality(
-                results, requested_roles, item.get("task", "")
+            violations = validate_role_outputs(
+                results,
+                requested_roles,
+                item.get("task", ""),
+                item.get("evidence", []),
             )
-            if deterministic:
-                qa_result = deterministic
+            if violations:
+                qa_result = {
+                    "ok": True,
+                    "service": "quality",
+                    "role": "Deterministic acceptance gate",
+                    "provider": "local_rules",
+                    "model": "sam-acceptance-v1",
+                    "status": "rejected",
+                    "output": (
+                        "DELIVERABLE:\nالقبول مرفوض وفق فحوص الأدلة الآلية.\n"
+                        + "\n".join("- " + message for message in violations)
+                        + "\nVALIDATION: فحص ملفات الوسائط عبر المسار المحلي، حجم الملف، SHA-256، ونوع التدفق وبيانات ffprobe.\n"
+                        + "LIMITATIONS: يلزم استمرار المراجعة الإبداعية البشرية عند الحاجة.\n"
+                        + "VERDICT: FAIL"
+                    ),
+                    "requested_role": "quality",
+                }
             else:
                 compact = [
                     {
@@ -372,6 +412,8 @@ def execute_task(task_id):
                     item.get("context", "")
                     + "\n\nROLE_OUTPUTS_JSON:\n"
                     + json.dumps(compact, ensure_ascii=False)
+                    + "\n\nVERIFIED_MEDIA_EVIDENCE_JSON:\n"
+                    + json.dumps(item.get("evidence", []), ensure_ascii=False)
                 )
                 qa_result = run_one(SERVICE_MAP["quality"], qa_task, qa_context)
             results.append(qa_result)
@@ -408,10 +450,9 @@ def execute_task(task_id):
             else ("rejected" if quality_requested and quality_result else "partial")
         )
         item["completed_at"] = now()
-        item["evidence"] = item.get("evidence", [])
         item["evidence_note"] = (
-            "Text from a model is not proof of external execution. Media artifacts "
-            "must exist, have a verified path and SHA-256, and pass file inspection."
+            "Evidence is accepted only after the coordinator verifies a real file, "
+            "its SHA-256, media stream and metadata."
         )
         save_task(item)
     except Exception as error:
@@ -427,18 +468,12 @@ def execute_task(task_id):
 
 
 def schedule_task(task_id):
-    with ACTIVE_LOCK:
-        if task_id in ACTIVE_TASKS:
-            return False
-        ACTIVE_TASKS.add(task_id)
-        ACTIVE_TASKS.discard(task_id)
     threading.Thread(
         target=execute_task,
         args=(task_id,),
         name="sam-task-" + task_id[:8],
         daemon=True,
     ).start()
-    return True
 
 
 def recover_interrupted_tasks():
@@ -471,6 +506,12 @@ class Handler(BaseHTTPRequestHandler):
             "Bearer " + API_TOKEN
         )
 
+    def read_body(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        if length > MAX_BODY_BYTES:
+            raise ValueError("payload_too_large")
+        return json.loads(self.rfile.read(length) or b"{}")
+
     def do_GET(self):
         if self.path == "/health":
             states = [worker_health(service) for service in SERVICES]
@@ -496,6 +537,7 @@ class Handler(BaseHTTPRequestHandler):
                     "worker_retries": WORKER_RETRIES,
                     "worker_timeout_seconds": WORKER_TIMEOUT,
                     "task_storage": "sqlite_wal_plus_json_archive",
+                    "media_storage": MEDIA_ROOT,
                     "task_counts": counts,
                     "services": states,
                 },
@@ -512,15 +554,42 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.authorized():
             return self.send_json(401, {"error": "unauthorized"})
-        if self.path != "/tasks":
-            return self.send_json(404, {"error": "not_found"})
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if length > MAX_BODY_BYTES:
-                return self.send_json(413, {"error": "payload_too_large"})
-            data = json.loads(self.rfile.read(length) or b"{}")
+            data = self.read_body()
+        except ValueError as error:
+            code = 413 if str(error) == "payload_too_large" else 400
+            return self.send_json(code, {"error": str(error)})
         except Exception:
             return self.send_json(400, {"error": "invalid_json"})
+
+        if self.path.startswith("/tasks/") and self.path.endswith("/evidence"):
+            task_id = self.path.split("/")[-2]
+            item = load_task(task_id)
+            if not item:
+                return self.send_json(404, {"error": "task_not_found"})
+            try:
+                record = verify_media_file(data.get("path"))
+            except FileNotFoundError as error:
+                return self.send_json(404, {"error": str(error)})
+            except Exception as error:
+                return self.send_json(422, {"error": str(error)})
+            evidence = item.setdefault("evidence", [])
+            evidence = [entry for entry in evidence if entry.get("sha256") != record["sha256"]]
+            evidence.append(record)
+            item["evidence"] = evidence
+            item["status"] = "queued"
+            item["acceptance_pass"] = False
+            item.pop("completed_at", None)
+            item["results"] = [
+                entry for entry in item.get("results", [])
+                if entry.get("service") != "quality"
+            ]
+            save_task(item)
+            schedule_task(task_id)
+            return self.send_json(201, {"task_id": task_id, "evidence": record})
+
+        if self.path != "/tasks":
+            return self.send_json(404, {"error": "not_found"})
         task = str(data.get("task", "")).strip()
         if not task:
             return self.send_json(400, {"error": "task_required"})
@@ -541,6 +610,7 @@ class Handler(BaseHTTPRequestHandler):
             "requested": len(chosen),
             "finished_workers": 0,
             "results": [],
+            "evidence": [],
             "created_at": now(),
             "approval_required_for": [
                 "publish",
