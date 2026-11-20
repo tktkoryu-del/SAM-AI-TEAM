@@ -1,14 +1,19 @@
 import ast
 import json
+import sys
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "services" / "runtime"
+sys.path.insert(0, str(RUNTIME))
+from acceptance import validate_role_outputs
+
 EXPECTED = {
     "ceo", "coo", "research", "strategy", "cto", "design",
     "video", "content", "marketing", "platforms", "finance", "quality",
 }
+
 
 class RepositoryAcceptanceTests(unittest.TestCase):
     def test_role_catalog_has_twelve_unique_roles(self):
@@ -35,9 +40,10 @@ class RepositoryAcceptanceTests(unittest.TestCase):
         for role, prompt in prompts.items():
             self.assertTrue(prompt.strip(), f"empty role prompt: {role}")
 
-    def test_runtime_contains_coordinator_and_worker(self):
+    def test_runtime_contains_coordinator_worker_and_acceptance_module(self):
         self.assertTrue((RUNTIME / "coordinator.py").exists())
         self.assertTrue((RUNTIME / "service.py").exists())
+        self.assertTrue((RUNTIME / "acceptance.py").exists())
 
     def test_deployment_compose_declares_services(self):
         compose = RUNTIME / "docker-compose.yml"
@@ -66,6 +72,87 @@ class RepositoryAcceptanceTests(unittest.TestCase):
         for marker in ("runtime: docker", "plan: free", "autoDeployTrigger: off",
                        "sync: false", "generateValue: true"):
             self.assertIn(marker, blueprint)
+
+    def test_coordinator_has_durable_queue_retries_and_recovery(self):
+        source = (RUNTIME / "coordinator.py").read_text(encoding="utf-8")
+        for marker in (
+            "journal_mode=WAL",
+            "WORKER_RETRIES",
+            "WORKER_TIMEOUT",
+            "recover_interrupted_tasks",
+            "SAM_WORKER_TOKEN",
+            "/evidence",
+            "sha256",
+            "ffprobe",
+        ):
+            self.assertIn(marker, source)
+
+    def test_unverified_media_filename_and_missing_file_are_rejected(self):
+        output = (
+            "DELIVERABLE:\nA usable production export is ready: SAM_short.mp4\n"
+            "The video is vertical and runs for 15 seconds. This line is intentionally "
+            "long enough to exceed the minimum output threshold used by the acceptance gate.\n"
+            "VALIDATION: checked the storyboard and timeline.\n"
+        )
+        violations = validate_role_outputs(
+            [{"service": "video", "ok": True, "output": output}],
+            ["video", "quality"],
+            "Rendered MP4 video file, 15 seconds, vertical 9:16",
+            [],
+        )
+        self.assertTrue(any("Required media files not evidenced" in item for item in violations))
+        self.assertTrue(any("Unverified media filenames" in item for item in violations))
+
+    def test_verified_vertical_video_with_matching_sha_passes_media_checks(self):
+        output = (
+            "DELIVERABLE:\nThe exported file SAM_short.mp4 is ready for review. "
+            "This role output is deliberately more than eighty characters and includes "
+            "the actual media deliverable reference.\n"
+            "VALIDATION: media metadata and hash are attached to the task evidence.\n"
+        )
+        evidence = [{
+            "verified": True,
+            "sha256": "a" * 64,
+            "size_bytes": 2400000,
+            "type": "video",
+            "path": "SAM_short.mp4",
+            "media_probe": {
+                "stream_type": "video",
+                "width": 1080,
+                "height": 1920,
+                "duration_seconds": 15.0,
+            },
+        }]
+        violations = validate_role_outputs(
+            [{"service": "video", "ok": True, "output": output}],
+            ["video", "quality"],
+            "Rendered MP4 video file, 15 seconds, vertical 9:16",
+            evidence,
+        )
+        self.assertEqual(violations, [])
+
+    def test_horizontal_video_fails_vertical_task(self):
+        evidence = [{
+            "verified": True,
+            "sha256": "b" * 64,
+            "size_bytes": 1000000,
+            "type": "video",
+            "path": "wide.mp4",
+            "media_probe": {
+                "stream_type": "video",
+                "width": 1920,
+                "height": 1080,
+                "duration_seconds": 15.0,
+            },
+        }]
+        violations = validate_role_outputs(
+            [{"service": "video", "ok": True, "output": "DELIVERABLE:\n" + ("usable timeline " * 12)}],
+            ["video", "quality"],
+            "Actual rendered MP4 video file, 15 seconds, vertical 9:16",
+            evidence,
+        )
+        self.assertTrue(any("not portrait/vertical" in item for item in violations))
+
 
 if __name__ == "__main__":
     unittest.main()
