@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: sam-ai-team-staging
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: feature/acceptance-and-deployment-gates
+    dockerfilePath: services/runtime/Dockerfile
+    dockerContext: services/runtime
+    dockerCommand: bash ./cloud-entrypoint.sh
+    healthCheckPath: /health
+    maxShutdownDelaySeconds: 120
+    autoDeployTrigger: off
+    envVars:
+      - key: SAM_BIND_HOST
+        value: "0.0.0.0"
+      - key: SAM_WORKER_BIND_HOST
+        value: "127.0.0.1"
+      - key: SAM_LLM_PROVIDER
+        value: openai
+      - key: SAM_MAX_PARALLEL
+        value: "2"
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SAM_API_TOKEN
+        generateValue: true
