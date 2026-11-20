@@ -76,6 +76,16 @@ def init_db():
         )
 
 
+
+def valid_task_id(value):
+    """Accept only canonical UUID task identifiers before touching storage paths."""
+    if not isinstance(value, str):
+        return False
+    try:
+        return str(uuid.UUID(value)) == value.lower()
+    except (ValueError, AttributeError, TypeError):
+        return False
+
 def task_file(task_id):
     return os.path.join(TASK_DIR, task_id + ".json")
 
@@ -548,7 +558,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/services":
             return self.send_json(200, {"services": SERVICES})
         if self.path.startswith("/tasks/"):
-            item = load_task(self.path.rsplit("/", 1)[-1])
+            task_id = self.path[len("/tasks/"):]
+            if "/" in task_id or not valid_task_id(task_id):
+                return self.send_json(400, {"error": "invalid_task_id"})
+            item = load_task(task_id)
             return self.send_json(200 if item else 404, item or {"error": "task_not_found"})
         return self.send_json(404, {"error": "not_found"})
 
@@ -564,7 +577,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(400, {"error": "invalid_json"})
 
         if self.path.startswith("/tasks/") and self.path.endswith("/evidence"):
-            task_id = self.path.split("/")[-2]
+            task_id = self.path[len("/tasks/"):-len("/evidence")].strip("/")
+            if "/" in task_id or not valid_task_id(task_id):
+                return self.send_json(400, {"error": "invalid_task_id"})
+            with ACTIVE_LOCK:
+                if task_id in ACTIVE_TASKS:
+                    return self.send_json(409, {"error": "task_is_running"})
             item = load_task(task_id)
             if not item:
                 return self.send_json(404, {"error": "task_not_found"})
