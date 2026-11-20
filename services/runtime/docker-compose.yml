@@ -3,14 +3,33 @@ services:
     build: .
     command: ["python", "coordinator.py"]
     ports: ["8787:8787"]
-    environment: [SAM_HOST=0.0.0.0]
+    environment:
+      SAM_BIND_HOST: "0.0.0.0"
+      SAM_DOCKER_NETWORK: "1"
+      SAM_API_TOKEN: "${SAM_API_TOKEN:?Set SAM_API_TOKEN in .env}"
     depends_on: [ceo, coo, research, strategy, cto, design, video, content, marketing, platforms, finance, quality]
+    extra_hosts: ["host.docker.internal:host-gateway"]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/health',timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
   ceo: &worker
     build: .
     command: ["python", "service.py", "ceo"]
-    expose: ["8790"]
+    environment: &worker_env
+      SAM_BIND_HOST: "0.0.0.0"
+      SAM_LLM_PROVIDER: "ollama"
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      SAM_OLLAMA_MODEL: "${SAM_OLLAMA_MODEL:-qwen2.5:3b}"
+    extra_hosts: ["host.docker.internal:host-gateway"]
     restart: unless-stopped
+    healthcheck: &worker_health
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8790/health',timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
   coo: {<<: *worker, command: ["python", "service.py", "coo"]}
   research: {<<: *worker, command: ["python", "service.py", "research"]}
   strategy: {<<: *worker, command: ["python", "service.py", "strategy"]}
